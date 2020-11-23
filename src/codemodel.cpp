@@ -4,6 +4,46 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDebug>
+#include <QThread>
+
+class CodeModelAnalyzerThread : public QThread
+{
+public:
+    CodeModelAnalyzerThread(const QVector<File*> &files, std::atomic<int> &counter, std::atomic<int> &abortFlag)
+        : m_files(files), m_counter(counter), m_abortFlag(abortFlag) {}
+
+    void run() override
+    {
+        while (m_abortFlag.load() == 0) {
+            int nextIdx = m_counter.fetch_add(1);
+            if (nextIdx >= m_files.size())
+                return;
+
+            File *file = m_files[nextIdx];
+            QFile f(file->path());
+
+            if (f.open(QFile::ReadOnly)) {
+                const QByteArray data = f.readAll();
+                int loc = 1;
+                for (char c : data) {
+                    if (c == '\n')
+                        loc++;
+                }
+
+                file->m_ok = true;
+                file->m_loc = loc;
+            } else {
+                file->m_ok = false;
+                file->m_loc = 0;
+            }
+        }
+    }
+
+private:
+    const QVector<File*> &m_files;
+    std::atomic<int> &m_counter;
+    std::atomic<int> &m_abortFlag;
+};
 
 Directory::Directory(const QString &name, const QString &path, Directory *parent)
     : m_name(name)
@@ -21,17 +61,36 @@ Directory::~Directory()
 {
 }
 
-void Directory::traverse(const FileVisitor &visitor) const
+void Directory::traverse(const ConstFileVisitor &visitor) const
+{
+    for (const CodeItem *child : m_children)
+        child->traverse(visitor);
+}
+
+void Directory::traverse(const ConstDirectoryVisitor &visitor, TraversalType traversalType) const
+{
+    if (traversalType == ItemFirst)
+        visitor(this);
+    for (const CodeItem *child : m_children)
+        child->traverse(visitor, traversalType);
+    if (traversalType == ChildrenFirst)
+        visitor(this);
+}
+
+void Directory::traverse(const FileVisitor &visitor)
 {
     for (CodeItem *child : m_children)
         child->traverse(visitor);
 }
 
-void Directory::traverse(const DirectoryVisitor &visitor) const
+void Directory::traverse(const DirectoryVisitor &visitor, TraversalType traversalType)
 {
-    visitor(this);
+    if (traversalType == ItemFirst)
+        visitor(this);
     for (CodeItem *child : m_children)
-        child->traverse(visitor);
+        child->traverse(visitor, traversalType);
+    if (traversalType == ChildrenFirst)
+        visitor(this);
 }
 
 QString File::path() const
@@ -44,14 +103,22 @@ QString File::fullName() const
     return m_dir->fullName() + m_name + "." + m_ending;
 }
 
-void File::traverse(const FileVisitor &visitor) const
+void File::traverse(const ConstFileVisitor &visitor) const
 {
     visitor(this);
 }
 
-void File::traverse(const DirectoryVisitor &visitor) const
+void File::traverse(const ConstDirectoryVisitor &/*visitor*/, TraversalType /*traversalType*/) const
 {
-    Q_UNUSED(visitor)
+}
+
+void File::traverse(const FileVisitor &visitor)
+{
+    visitor(this);
+}
+
+void File::traverse(const DirectoryVisitor &/*visitor*/, TraversalType /*traversalType*/)
+{
 }
 
 File::File(Directory *dir, const QString &name, const QString &ending, qint64 sz, const QDateTime &lastModified)
@@ -190,7 +257,7 @@ void CodeModel::recompute()
     m_analyzedFileCount = 0;
     m_dirCount = 0;
     for (Directory *dir : m_rootDirs) {
-        dir->traverse([&](const Directory*) { m_dirCount++; });
+        dir->traverse([&](const Directory*) { m_dirCount++; }, CodeItem::ItemFirst);
         dir->traverse([&](const File*) { m_fileCount++; m_analyzedFileCount++; });
     }
 
@@ -210,8 +277,51 @@ void CodeModel::recompute()
 
     setState(State_Analyzing);
 
-    for (auto it = m_rootDirs.begin(); it != m_rootDirs.end(); ++it) {
-        analyze(it.value());
+    // enumerate all files that are not yet cached
+    QVector<File*> files;
+    for (Directory *rootDir : m_rootDirs) {
+        rootDir->traverse([&](File *file) {
+            int loc;
+            if (m_cache.getEntry(file->path(), file->size(), file->lastModified(), loc)) {
+                file->m_ok = true;
+                file->m_loc = loc;
+                setAnalyzedFileCount(m_analyzedFileCount + 1);
+            } else {
+                files << file;
+            }
+        });
+    }
+
+    // spawn a bunch of threads to analyze the files
+    std::atomic<int> idx(0);
+    QVector<CodeModelAnalyzerThread*> threads;
+    for (int i = 0; i < 8; ++i) {
+        threads << new CodeModelAnalyzerThread(files, idx, m_abortFlag);
+        threads.last()->start();
+    }
+    while (m_abortFlag.load() == 0 && idx.load() < files.size()) {
+        setAnalyzedFileCount(idx.load());
+        QThread::usleep(100* 1000);
+    }
+    for (CodeModelAnalyzerThread *thread : threads) {
+        thread->wait();
+        delete thread;
+    }
+
+    // Write results to cache
+    for (File *file : files) {
+        if (file->m_ok) {
+            m_cache.saveEntry(file->path(), file->size(), file->lastModified(), file->loc());
+        }
+    }
+
+    // Accumulate file locs for parent dirs
+    for (Directory *rootDir : m_rootDirs) {
+        rootDir->traverse([&](Directory *dir) {
+            dir->m_loc = std::accumulate(dir->m_children.begin(), dir->m_children.end(), 0, [](int n, CodeItem *item) {
+                return n + item->loc() + n;
+            });
+        }, CodeItem::ChildrenFirst);
     }
 
     setState(State_Done);
@@ -263,54 +373,4 @@ void CodeModel::enumerate(Directory *dir)
             return (qintptr) a < (qintptr) b;
         return (int) a->type() < (int) b->type();
     });
-}
-
-void CodeModel::analyze(Directory *dir)
-{
-    for (CodeItem *child : dir->m_children) {
-        // Abort early if flag is raised
-        if (m_abortFlag.load() != 0) {
-            return;
-        }
-
-        if (child->type() == CodeItem::Type_Directory) {
-            Directory *subdir = (Directory*) child;
-            analyze(subdir);
-            dir->m_loc += subdir->m_loc;
-        }
-        else {
-            File *file = (File*) child;
-
-            int loc;
-            if (m_cache.getEntry(file->path(), file->size(), file->lastModified(), loc)) {
-                file->m_ok = true;
-                file->m_loc = loc;
-            }
-            else {
-                QFile f(file->path());
-
-                if (f.open(QFile::ReadOnly)) {
-                    const QByteArray data = f.readAll();
-                    int loc = 1;
-                    for (char c : data) {
-                        if (c == '\n')
-                            loc++;
-                    }
-
-                    file->m_ok = true;
-                    file->m_loc = loc;
-
-                    m_cache.saveEntry(file->path(), file->size(), file->lastModified(), loc);
-                } else {
-                    file->m_ok = false;
-                }
-            }
-
-            if (file->m_ok) {
-                dir->m_loc += file->m_loc;
-            }
-
-            setAnalyzedFileCount(m_analyzedFileCount + 1);
-        }
-    }
 }

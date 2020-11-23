@@ -5,19 +5,23 @@
 #include <QDateTime>
 #include <QVector>
 #include <functional>
+#include <atomic>
 
 #include "codemodelcache.h"
 
 class File;
 class Directory;
 
-using FileVisitor = std::function<void(const File*)>;
-using DirectoryVisitor = std::function<void(const Directory*)>;
+using FileVisitor = std::function<void(File*)>;
+using DirectoryVisitor = std::function<void(Directory*)>;
+using ConstFileVisitor = std::function<void(const File*)>;
+using ConstDirectoryVisitor = std::function<void(const Directory*)>;
 
 class CodeItem
 {
 public:
     enum Type { Type_Directory, Type_File };
+    enum TraversalType { ItemFirst, ChildrenFirst };
 
     virtual Type type() const = 0;
     virtual QString path() const = 0;
@@ -26,8 +30,10 @@ public:
     int loc() const { return m_loc; }
     virtual ~CodeItem() {}
 
-    virtual void traverse(const FileVisitor &visitor) const = 0;
-    virtual void traverse(const DirectoryVisitor &visitor) const = 0;
+    virtual void traverse(const ConstFileVisitor &visitor) const = 0;
+    virtual void traverse(const ConstDirectoryVisitor &visitor, TraversalType traversalType) const = 0;
+    virtual void traverse(const FileVisitor &visitor) = 0;
+    virtual void traverse(const DirectoryVisitor &visitor, TraversalType traversalType) = 0;
 
 protected:
     int m_loc = 0;
@@ -45,8 +51,10 @@ public:
 
     const QVector<CodeItem*> &children() const { return m_children; }
 
-    void traverse(const FileVisitor &visitor) const override;
-    void traverse(const DirectoryVisitor &visitor) const override;
+    void traverse(const ConstFileVisitor &visitor) const override;
+    void traverse(const ConstDirectoryVisitor &visitor, TraversalType traversalType) const override;
+    void traverse(const FileVisitor &visitor) override;
+    void traverse(const DirectoryVisitor &visitor, TraversalType traversalType) override;
 
 private:
     friend class CodeModel;
@@ -77,11 +85,14 @@ public:
 
     bool ok() const { return m_ok; }
 
-    void traverse(const FileVisitor &visitor) const override;
-    void traverse(const DirectoryVisitor &visitor) const override;
+    void traverse(const ConstFileVisitor &visitor) const override;
+    void traverse(const ConstDirectoryVisitor &visitor, TraversalType traversalType) const override;
+    void traverse(const FileVisitor &visitor) override;
+    void traverse(const DirectoryVisitor &visitor, TraversalType traversalType) override;
 
 private:
     friend class CodeModel;
+    friend class CodeModelAnalyzerThread;
     friend class Directory;
 
     File(Directory *dir, const QString &name, const QString &ending, qint64 sz, const QDateTime &lastModified);
@@ -169,7 +180,7 @@ private:
     int m_analyzedFileCount = 0;
     int m_dirCount = 0;
 
-    QAtomicInt m_abortFlag;
+    std::atomic<int> m_abortFlag;
 
     CodeModelCache m_cache;
 };

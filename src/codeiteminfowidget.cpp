@@ -74,7 +74,7 @@ void CodeItemInfoWidget::update()
     else if (m_codeItem->type() == CodeItem::Type_Directory) {
         int dirs = 0, files = 0;
         m_codeItem->traverse([&](const File*) { files++; });
-        m_codeItem->traverse([&](const Directory*) { dirs++; });
+        m_codeItem->traverse([&](const Directory*) { dirs++; }, CodeItem::ItemFirst);
 
         Directory *dir = (Directory*) m_codeItem;
         label->setText(dir->name() + " (Directory)");
