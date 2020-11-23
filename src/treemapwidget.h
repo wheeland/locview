@@ -76,7 +76,7 @@ private:
         QString groupLabel;
         QRectF groupLabelBounds;
         QColor color;
-        float size;
+        float size = 0.0f;
         void *userData = nullptr;
         int depth = 0;
         QVector<Node> children;
@@ -87,7 +87,7 @@ private:
 
         // data updated on viewport change
         QRectF viewRect;
-        NodeRenderState renderState;
+        NodeRenderState renderState = CulledViewport;
 
         bool responsibleForGroup = true;
         QRectF groupViewRect;
