@@ -5,6 +5,7 @@
 #include <numeric>
 #include <algorithm>
 #include <cassert>
+#include <memory>
 
 namespace Squarify {
 
@@ -28,19 +29,10 @@ struct TreeMapNode
         Rect rect;
     };
 
-    TreeMapNode() : bounds(), next(nullptr) {}
-    TreeMapNode(TreeMapNode &&o) { *this = std::move(o); }
-    ~TreeMapNode() { delete next; }
-
-    TreeMapNode &operator=(TreeMapNode &&o) {
-        bounds = o.bounds;
-        elements = std::move(o.elements);
-        if (next)
-            delete next;
-        next = o.next;
-        o.next = nullptr;
-        return *this;
-    }
+    TreeMapNode() = default;
+    TreeMapNode(TreeMapNode&& o) = default;
+    ~TreeMapNode() = default;
+    TreeMapNode& operator=(TreeMapNode&& o) = default;
 
     // would result in undefined 'next' ownership
     TreeMapNode(const TreeMapNode &) = delete;
@@ -61,7 +53,7 @@ struct TreeMapNode
      * If non-null: Further subdivision of more elements.
      * Is owned by this TreeMapNode and will be de-allocated on destruction.
      */
-    TreeMapNode *next;
+    std::unique_ptr<TreeMapNode> next;
 };
 
 class Squarify
@@ -175,7 +167,7 @@ private:
         }
 
         if (remaining.len() > 0) {
-            ret.next = new TreeMapNode();
+            ret.next.reset(new TreeMapNode());
             *ret.next = squarify(remaining, left);
         }
 

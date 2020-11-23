@@ -136,7 +136,7 @@ void TreeMapWidget::relayoutTreeMapping(TreeNode &treeNode, Node &node, const QR
     const SquarifyNode tree = Squarify::Squarify(inSizes, inRect).computeWithHierarchy();
 
     int treeDepth = node.treeDepth;
-    for (const SquarifyNode *treeIt = &tree; treeIt != nullptr; treeIt = treeIt->next) {
+    for (const SquarifyNode *treeIt = &tree; treeIt != nullptr; treeIt = treeIt->next.get()) {
         TreeNode::Subdivision subdivision;
         ++treeDepth;
 
