@@ -5,11 +5,13 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QDebug>
+#include <QThread>
 
 static const QString KEY_CACHE_PATH("CacheFileLocation");
 static const QString KEY_INCLUDES("IncludePaths");
 static const QString KEY_EXCLUDES("ExcludePaths");
 static const QString KEY_ENDINGS("FileEndings");
+static const QString KEY_THREADCOUNT("CodeModelThreadCount");
 
 static QString dataDirectory()
 {
@@ -114,4 +116,10 @@ void PersistentData::setFileEndings(const QStringList &strings)
     static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
     settings.setValue(KEY_ENDINGS, strings);
     settings.sync();
+}
+
+int PersistentData::getCodeModelThreadCount()
+{
+    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
+    return settings.value(KEY_THREADCOUNT, QVariant(2 * QThread::idealThreadCount())).toInt();
 }

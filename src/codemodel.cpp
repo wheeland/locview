@@ -1,4 +1,5 @@
 #include "codemodel.h"
+#include "persistent.h"
 
 #include <QDir>
 #include <QFile>
@@ -295,7 +296,8 @@ void CodeModel::recompute()
     // spawn a bunch of threads to analyze the files
     std::atomic<int> idx(0);
     QVector<CodeModelAnalyzerThread*> threads;
-    for (int i = 0; i < 8; ++i) {
+    static int threadCount = PersistentData::getCodeModelThreadCount();
+    for (int i = 0; i < threadCount; ++i) {
         threads << new CodeModelAnalyzerThread(files, idx, m_abortFlag);
         threads.last()->start();
     }

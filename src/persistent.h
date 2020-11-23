@@ -17,4 +17,6 @@ public:
 
     static QStringList getFileEndings();
     static void setFileEndings(const QStringList &strings);
+
+    static int getCodeModelThreadCount();
 };
