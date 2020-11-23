@@ -162,7 +162,7 @@ void CodeModelDialog::setEndings(const QStringList &f)
     m_endingsModel->setStringList(f);
 }
 
-void CodeModelDialog::resizeEvent(QResizeEvent */*event*/)
+void CodeModelDialog::resizeEvent(QResizeEvent * /*event*/)
 {
     ui->verticalLayoutWidget->resize(width() - 20, height() - 20);
 }
