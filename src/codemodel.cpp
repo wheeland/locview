@@ -321,7 +321,7 @@ void CodeModel::recompute()
     for (Directory *rootDir : m_rootDirs) {
         rootDir->traverse([&](Directory *dir) {
             dir->m_loc = std::accumulate(dir->m_children.begin(), dir->m_children.end(), 0, [](int n, CodeItem *item) {
-                return n + item->loc() + n;
+                return n + item->loc();
             });
         }, CodeItem::ChildrenFirst);
     }
