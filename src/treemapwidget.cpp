@@ -57,11 +57,14 @@ const char *s_fs = "\
 TreeMapWidget::TreeMapWidget(QWidget *parent)
     : QOpenGLWidget(parent)
     , TreeMapLayouter(width(), height())
+    , m_oldSize(width(), height())
     , m_quadVertexBuffer(QOpenGLBuffer::VertexBuffer)
     , m_nodeInstanceBuffer(QOpenGLBuffer::VertexBuffer)
     , m_groupInstanceBuffer(QOpenGLBuffer::VertexBuffer)
 {
     setMouseTracking(true);
+    connect(&m_resizeTimer, &QTimer::timeout, this, &TreeMapWidget::onResize);
+    m_resizeTimer.setSingleShot(true);
 }
 
 TreeMapWidget::~TreeMapWidget()
@@ -71,6 +74,15 @@ TreeMapWidget::~TreeMapWidget()
 void TreeMapWidget::resizeEvent(QResizeEvent *event)
 {
     QOpenGLWidget::resizeEvent(event);
+
+    if (!m_resizeTimer.isActive())
+        m_oldSize = event->oldSize();
+    m_resizeTimer.start(100);
+}
+
+void TreeMapWidget::onResize()
+{
+    m_oldSize = QSize(width(), height());
     TreeMapLayouter::resize(width(), height());
 }
 
@@ -176,6 +188,14 @@ void TreeMapWidget::paintGL()
 {
     QOpenGLContext *gl = QOpenGLContext::currentContext();
 
+    // while resizing, we refrain from updating the layout, but just scale the content
+    // for a short amount of time
+    const float scaleX = (float) width() / m_oldSize.width();
+    const float scaleY = (float) height() / m_oldSize.height();
+    const auto scale = [&](const QRectF &r) {
+        return QRectF(r.x() * scaleX, r.y() * scaleY, r.width() * scaleX, r.height() * scaleY);
+    };
+
     // if the node layout has changed, we need to re-build the vertex buffer
     if (m_nodeInstanceBufferDirty) {
         VertexBuffer vertices;
@@ -191,7 +211,7 @@ void TreeMapWidget::paintGL()
 
     const auto render = [&](QOpenGLBuffer &instanceBuffer, int instances, QPointF ofs, float scale, float border) {
         m_shader.bind();
-        m_shader.setUniformValue("screenSize", QVector2D(width(), height()));
+        m_shader.setUniformValue("screenSize", QVector2D(m_oldSize.width(), m_oldSize.height()));
         m_shader.setUniformValue("border", border);
         m_shader.setUniformValue("offset", ofs);
         m_shader.setUniformValue("scale", scale);
@@ -230,23 +250,22 @@ void TreeMapWidget::paintGL()
     };
 
     // Render all nodes
-    const float scale = width() / m_viewport.width();
-    render(m_nodeInstanceBuffer, m_nodeInstancesCount, -m_viewport.topLeft(), scale, 0.3f);
+    render(m_nodeInstanceBuffer, m_nodeInstancesCount, -m_viewport.topLeft(), m_oldSize.width() / m_viewport.width(), 0.3f);
 
     // Render selected/highlighted outlines and node labels
     QPainter painter(this);
     const QColor paintColor(0, 0, 0);
+    painter.setBrush(Qt::NoBrush);
     traverseRenderNodes(*m_renderedNode, [&](const Node &node) {
         if (node.renderState == Render) {
             // draw rect
-            painter.setBrush(Qt::NoBrush);
             if (m_selectedNode == &node) {
                 painter.setPen(QPen(paintColor, 3.0f));
-                painter.drawRect(node.viewRect.adjusted(0, 0, -1.5f, -1.5f));
+                painter.drawRect(scale(node.viewRect.adjusted(0, 0, -1.5f, -1.5f)));
             }
             else if (m_hoveredNode == &node) {
                 painter.setPen(QPen(paintColor, 2.0f));
-                painter.drawRect(node.viewRect.adjusted(0, 0, 1.0f, 1.0f));
+                painter.drawRect(scale(node.viewRect.adjusted(0, 0, 1.0f, 1.0f)));
             }
 
             // possibly draw label text, if there is enough space
@@ -254,7 +273,7 @@ void TreeMapWidget::paintGL()
                 painter.setPen(paintColor);
                 const QRectF bounds = painter.boundingRect(node.viewRect, Qt::AlignHCenter | Qt::AlignCenter, node.label);
                 if (bounds.width() < node.viewRect.width() + 10 && bounds.height() < node.viewRect.height() + 5) {
-                    painter.drawText(node.viewRect, Qt::AlignHCenter | Qt::AlignCenter, node.label);
+                    painter.drawText(scale(node.viewRect), Qt::AlignHCenter | Qt::AlignCenter, node.label);
                 }
             }
         }
@@ -278,7 +297,7 @@ void TreeMapWidget::paintGL()
     painter.setPen(QPen(QColor(255, 255, 255), 1.0f));
     traverseRenderNodes(*m_renderedNode, [&](const Node &node) {
         if (!node.groupLabelRect.isNull())
-            painter.drawText(node.groupLabelRect, Qt::AlignCenter | Qt::AlignVCenter, node.groupLabel);
+            painter.drawText(scale(node.groupLabelRect), Qt::AlignCenter | Qt::AlignVCenter, node.groupLabel);
         return node.responsibleForGroup;
     });
 }

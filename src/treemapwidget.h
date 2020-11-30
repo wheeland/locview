@@ -3,6 +3,7 @@
 #include <QOpenGLWidget>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLBuffer>
+#include <QTimer>
 
 #include "squarify.h"
 #include "treemaplayouter.h"
@@ -40,6 +41,9 @@ protected:
     void onLayoutChanged() override;
     void onViewportChanged() override;
 
+private slots:
+    void onResize();
+
 private:
     void setSelectedNode(const Node *node, QPoint mouse);
     void setHoveredNode(const Node *node, QPoint mouse);
@@ -53,6 +57,11 @@ private:
 
     const Node *m_hoveredNode = nullptr;
     const Node *m_selectedNode = nullptr;
+
+    // after widget resizing, we only actually re-compute the scene after
+    // waiting for a short amount of time
+    QTimer m_resizeTimer;
+    QSize m_oldSize;
 
     QOpenGLShaderProgram m_shader;
     int m_shaderLocPos;
