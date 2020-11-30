@@ -28,6 +28,8 @@ const char *s_vs = "\
     attribute vec4 bgColor; \
     attribute vec4 fadeColor; \
     uniform vec2 screenSize; \
+    uniform vec2 offset; \
+    uniform float scale; \
     varying vec4 v_bgColor; \
     varying vec4 v_fadeColor; \
     varying vec2 v_uv; \
@@ -35,7 +37,8 @@ const char *s_vs = "\
         v_bgColor = bgColor; \
         v_fadeColor = fadeColor; \
         v_uv = uv; \
-        gl_Position = vec4(vec2(-1.0, 1.0) + vec2(2.0, -2.0) * pos / screenSize, 0.0, 1.0); \
+        vec2 viewPos = (pos + offset) * scale; \
+        gl_Position = vec4(vec2(-1.0, 1.0) + vec2(2.0, -2.0) * viewPos / screenSize, 0.0, 1.0); \
     }\
 ";
 
@@ -62,7 +65,8 @@ static Rect QRectToRect(const QRectF &r) { return Rect(r.left(), r.top(), r.widt
 
 TreeMapWidget::TreeMapWidget(QWidget *parent)
     : QOpenGLWidget(parent)
-    , m_vertexBuffer(QOpenGLBuffer::VertexBuffer)
+    , m_nodesBuffer(QOpenGLBuffer::VertexBuffer)
+    , m_groupsBuffer(QOpenGLBuffer::VertexBuffer)
 {
     setMouseTracking(true);
 }
@@ -81,6 +85,7 @@ void TreeMapWidget::setRootNode(const TreeMapNode &root)
     relayoutTreeMapping(m_treeRoot, *m_renderedNode, m_viewport);
     updateCulling(m_treeRoot);
     updateGroupRendering(&m_treeRoot);
+    m_nodesBufferDirty = true;
     update();
 }
 
@@ -269,6 +274,7 @@ void TreeMapWidget::setMaxDepth(int maxDepth)
         m_maxDepth = maxDepth;
         updateCulling(m_treeRoot);
         updateGroupRendering(&m_treeRoot);
+        m_nodesBufferDirty = true;
         update();
     }
 }
@@ -281,6 +287,7 @@ void TreeMapWidget::setMaxSize(int maxSize)
         m_maxSize = maxSize;
         updateCulling(m_treeRoot);
         updateGroupRendering(&m_treeRoot);
+        m_nodesBufferDirty = true;
         update();
     }
 }
@@ -295,6 +302,7 @@ void TreeMapWidget::setMinGroupSize(int minGroupSize)
             updateCulling(m_treeRoot);
         }
         updateGroupRendering(&m_treeRoot);
+        m_nodesBufferDirty = true;
         update();
     }
 }
@@ -311,6 +319,7 @@ void TreeMapWidget::zoomIn(void *userData)
         relayoutTreeMapping(m_treeRoot, *m_renderedNode, m_viewport);
         updateCulling(m_treeRoot);
         updateGroupRendering(&m_treeRoot);
+        m_nodesBufferDirty = true;
         update();
     }
 }
@@ -327,6 +336,7 @@ void TreeMapWidget::zoomOut()
         relayoutTreeMapping(m_treeRoot, *m_renderedNode, m_viewport);
         updateCulling(m_treeRoot);
         updateGroupRendering(&m_treeRoot);
+        m_nodesBufferDirty = true;
         update();
     }
 }
@@ -339,6 +349,7 @@ void TreeMapWidget::resizeEvent(QResizeEvent *event)
     relayoutTreeMapping(m_treeRoot, *m_renderedNode, m_viewport);
     updateCulling(m_treeRoot);
     updateGroupRendering(&m_treeRoot);
+    m_nodesBufferDirty = true;
     update();
 }
 
@@ -350,7 +361,8 @@ void TreeMapWidget::initializeGL()
         qWarning() << m_shader.log();
     }
 
-    m_vertexBuffer.create();
+    m_nodesBuffer.create();
+    m_groupsBuffer.create();
 }
 
 class Buffer
@@ -428,6 +440,12 @@ public:
         *this << x1 << y1 << bg << fade << uv0 << uv0 << uv0 << uv0;
     }
 
+    void upload(QOpenGLBuffer &glBuffer)
+    {
+        glBuffer.bind();
+        glBuffer.allocate(data(), size());
+    }
+
     int vertices() const { return size() / stride(); }
     constexpr static int stride() { return 20; }
 };
@@ -435,15 +453,28 @@ public:
 void TreeMapWidget::paintGL()
 {
     QOpenGLContext *gl = QOpenGLContext::currentContext();
-    VertexBuffer vertices;
 
-    const auto render = [&](float border) {
-        m_vertexBuffer.bind();
-        m_vertexBuffer.allocate(vertices.data(), vertices.size());
+    // if the node layout has changed, we need to re-build the vertex buffer
+    if (m_nodesBufferDirty) {
+        VertexBuffer vertices;
+        traverseRenderNodes(*m_renderedNode, [&](const Node &node) {
+            if (node.renderState == Render)
+                vertices.add(node.sceneRect, node.color, QColor(0, 0, 0));
+            return (node.renderState == RenderChildren);
+        });
+        vertices.upload(m_nodesBuffer);
+        m_nodesCount = vertices.vertices();
+        m_nodesBufferDirty = false;
+    }
+
+    const auto render = [&](QOpenGLBuffer &vertexBuffer, int vertices, QVector2D ofs, float scale, float border) {
+        vertexBuffer.bind();
 
         m_shader.bind();
         m_shader.setUniformValue("screenSize", QVector2D(width(), height()));
         m_shader.setUniformValue("border", border);
+        m_shader.setUniformValue("offset", ofs);
+        m_shader.setUniformValue("scale", scale);
         m_shader.enableAttributeArray("pos");
         m_shader.setAttributeBuffer("pos", GL_FLOAT, 0, 2, VertexBuffer::stride());
         m_shader.enableAttributeArray("bgColor");
@@ -457,29 +488,24 @@ void TreeMapWidget::paintGL()
         gl->functions()->glEnable(GL_BLEND);
         gl->functions()->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         gl->functions()->glBlendEquation(GL_FUNC_ADD);
-        gl->functions()->glDrawArrays(GL_TRIANGLES, 0, vertices.vertices());
+        gl->functions()->glDrawArrays(GL_TRIANGLES, 0, vertices);
 
         m_shader.disableAttributeArray("pos");
         m_shader.disableAttributeArray("bgColor");
         m_shader.disableAttributeArray("fadeColor");
         m_shader.disableAttributeArray("uv");
 
-        m_vertexBuffer.release();
+        vertexBuffer.release();
         m_shader.release();
     };
 
-    // Render all nodes that are visible in the view
-    traverseRenderNodes(*m_renderedNode, [&](const Node &node) {
-        if (node.renderState == Render)
-            vertices.add(node.viewRect, node.color, QColor(0, 0, 0));
-        return (node.renderState == RenderChildren);
-    });
-    render(0.3f);
-
-    const QColor paintColor(0, 0, 0);
+    // Render all nodes
+    const float scale = width() / m_viewport.width();
+    render(m_nodesBuffer, m_nodesCount, -QVector2D(m_viewport.topLeft()), scale, 0.3f);
 
     // Render selected/highlighted outlines and node labels
     QPainter painter(this);
+    const QColor paintColor(0, 0, 0);
     traverseRenderNodes(*m_renderedNode, [&](const Node &node) {
         if (node.renderState == Render) {
             // draw rect
@@ -507,14 +533,15 @@ void TreeMapWidget::paintGL()
 
     // render group node outlines (blended on top)
     painter.beginNativePainting();
-    vertices.clear();
+    VertexBuffer groupVertices;
     traverseRenderNodes(*m_renderedNode, [&](const Node &node) {
         if (!node.groupViewRect.isNull()) {
-            vertices.add(node.groupViewRect, QColor(0, 0, 0, 0), QColor(0, 0, 0));
+            groupVertices.add(node.groupViewRect, QColor(0, 0, 0, 0), QColor(0, 0, 0));
         }
         return node.responsibleForGroup;
     });
-    render(0.6f);
+    groupVertices.upload(m_groupsBuffer);
+    render(m_groupsBuffer, groupVertices.vertices(), QVector2D(0, 0), 1.0f, 0.6f);
     painter.endNativePainting();
 
     // render group node labels

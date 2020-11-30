@@ -94,6 +94,7 @@ private:
     Node m_root;
     Node *m_renderedNode = &m_root;
 
+    /** Corresponds to a squarified data node */
     struct TreeNode
     {
         struct Subdivision
@@ -150,5 +151,8 @@ private:
     int m_minGroupSize = 50;
 
     QOpenGLShaderProgram m_shader;
-    QOpenGLBuffer m_vertexBuffer;
+    QOpenGLBuffer m_nodesBuffer;
+    QOpenGLBuffer m_groupsBuffer;
+    bool m_nodesBufferDirty = true;
+    int m_nodesCount = 0;
 };
