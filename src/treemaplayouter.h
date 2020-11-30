@@ -77,6 +77,7 @@ protected:
         NodeRenderState renderState = CulledViewport;
 
         bool responsibleForGroup = true;
+        QRectF groupLabelRect;
         QRectF groupViewRect;
     };
     Node *m_renderedNode = &m_root;

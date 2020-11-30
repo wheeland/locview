@@ -18,8 +18,6 @@
 #include <QOpenGLFunctions>
 #include <QOpenGLExtraFunctions>
 
-static constexpr float GROUP_LABEL_OFFSET = 0.5f;
-
 using SquarifyNode = Squarify::TreeMapNode;
 using Squarify::Rect;
 
@@ -279,12 +277,8 @@ void TreeMapWidget::paintGL()
     // render group node labels
     painter.setPen(QPen(QColor(255, 255, 255), 1.0f));
     traverseRenderNodes(*m_renderedNode, [&](const Node &node) {
-        if (!node.groupViewRect.isNull()) {
-            QRectF bounds = node.groupViewRect;
-            bounds.adjust(GROUP_LABEL_OFFSET, GROUP_LABEL_OFFSET, -GROUP_LABEL_OFFSET, -GROUP_LABEL_OFFSET);
-            bounds = bounds.intersected(QRectF(0, 0, width(), height()));
-            painter.drawText(bounds, node.groupLabel);
-        }
+        if (!node.groupLabelRect.isNull())
+            painter.drawText(node.groupLabelRect, Qt::AlignCenter | Qt::AlignVCenter, node.groupLabel);
         return node.responsibleForGroup;
     });
 }

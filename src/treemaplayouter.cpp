@@ -9,7 +9,7 @@
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 
-static constexpr float GROUP_LABEL_OFFSET = 0.5f;
+static constexpr float GROUP_LABEL_OFFSET = 5.0f;
 
 using SquarifyNode = Squarify::TreeMapNode;
 using Squarify::Rect;
@@ -19,8 +19,15 @@ static QRectF scaled(const QRectF &rect, float scale)
     return QRectF(rect.left() * scale, rect.top() * scale, rect.width() * scale, rect.height() * scale);
 }
 
-static QRectF RectToQRect(const Rect &r) { return QRectF(r.x, r.y, r.width, r.height); }
-static Rect QRectToRect(const QRectF &r) { return Rect(r.left(), r.top(), r.width(), r.height()); }
+static QRectF RectToQRect(const Rect &r)
+{
+    return QRectF(r.x, r.y, r.width, r.height);
+}
+
+static Rect QRectToRect(const QRectF &r)
+{
+    return Rect(r.left(), r.top(), r.width(), r.height());
+}
 
 TreeMapLayouter::TreeMapLayouter(int width, int height)
     : m_width(width)
@@ -174,6 +181,7 @@ void TreeMapLayouter::updateGroupRendering(TreeNode *treeNode)
         return;
 
     treeNode->node->groupViewRect = QRectF();
+    treeNode->node->groupLabelRect = QRectF();
 
     // if this node isn't rendering its children, exit early so we don't have to traverse the whole tree
     if (treeNode != &m_treeRoot && treeNode->node->renderState != RenderChildren) {
@@ -223,6 +231,8 @@ void TreeMapLayouter::updateGroupRendering(TreeNode *treeNode)
                 && treeNode->node->responsibleForGroup
                 && !canRenderSubdivsAsGroup) {
             treeNode->node->groupViewRect = subdiv.remainingViewRect;
+            treeNode->node->groupLabelRect = treeNode->node->groupLabelBounds.translated(subdiv.remainingViewRect.topLeft());
+            treeNode->node->groupLabelRect.adjust(0, 0, 2 * GROUP_LABEL_OFFSET, 2 * GROUP_LABEL_OFFSET);
         }
     }
 
@@ -370,12 +380,8 @@ const TreeMapLayouter::Node *TreeMapLayouter::getNodeAt(QPoint pt, const Node *p
         if (!parent->viewRect.contains(pt))
             return nullptr;
 
-        if (!parent->groupViewRect.isNull() && parent->groupViewRect.contains(pt)) {
-            const QPointF topLeft = parent->groupViewRect.topLeft();
-            const QRectF labelRect = parent->groupLabelBounds.translated(topLeft);
-            if (labelRect.contains(pt))
-                return parent;
-        }
+        if (!parent->groupLabelRect.isNull() && parent->groupLabelRect.contains(pt))
+            return parent;
 
         for (const Node &child : parent->children) {
             if (const Node *found = getNodeAt(pt, &child))
