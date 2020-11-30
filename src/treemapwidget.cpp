@@ -672,12 +672,16 @@ const TreeMapWidget::Node *TreeMapWidget::getNodeAt(QPoint pt, const Node *paren
         return parent->viewRect.contains(pt) ? parent : nullptr;
 
     if (parent->renderState == RenderChildren) {
+        if (!parent->viewRect.contains(pt))
+            return nullptr;
+
         if (!parent->groupViewRect.isNull() && parent->groupViewRect.contains(pt)) {
             const QPointF topLeft = parent->groupViewRect.topLeft();
             const QRectF labelRect = parent->groupLabelBounds.translated(topLeft);
             if (labelRect.contains(pt))
                 return parent;
         }
+
         for (const Node &child : parent->children) {
             if (const Node *found = getNodeAt(pt, &child))
                 return found;
