@@ -11,6 +11,7 @@ SOURCES += \
     src/codemodel.cpp \
     src/codemodelcache.cpp \
     src/codemodeldialog.cpp \
+    src/codeutil.cpp \
     src/treemapwidget.cpp \
     src/progressbar.cpp \
     src/persistent.cpp \
@@ -23,6 +24,7 @@ HEADERS += \
     src/codemodel.h \
     src/codemodelcache.h \
     src/codemodeldialog.h \
+    src/codeutil.h \
     src/treemapwidget.h \
     src/progressbar.h \
     src/persistent.h \

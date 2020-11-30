@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "persistent.h"
+#include "codeutil.h"
+#include "hsluv-c/src/hsluv.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -7,21 +9,46 @@
 #include <QThread>
 #include <QDesktopServices>
 #include <QUrl>
-
-#include <QRandomGenerator>
 #include <QTimer>
 
-TreeMapNode nodeForFile(const File *file)
+static QColor hv2qcolor(float hue, float value)
+{
+    double r, g, b;
+    hsluv2rgb(hue, 100.0, value, &r, &g, &b);
+    return QColor(255 * r, 255 * g, 255 * b);
+}
+
+static QHash<QString, QColor> getColorPalette(const FileEndingStats::Stats &endings)
+{
+    // build hue list
+    QVector<float> hues{220.f, 360.f, 60.f, 120.f, 30.f, 180.f, 310.f, 275.f, 80.f};
+    while (hues.size() < endings.size())
+        hues << 360.f * ((float) qrand() / (float)RAND_MAX);
+    while (hues.size() > endings.size())
+        hues.removeLast();
+
+    QHash<QString, QColor> ret;
+    for (int i = 0; i < endings.size(); ++i)
+        ret[endings[i].ending] = hv2qcolor(hues[i], 80.f);
+
+    return ret;
+}
+
+TreeMapNode nodeForFile(const File *file, const QHash<QString, QColor> &palette)
 {
     TreeMapNode ret{};
     ret.label = file->name() + "." + file->ending();
     ret.groupLabel = ret.label;
+    ret.color = palette[file->ending()];
     ret.size = file->loc();
     ret.userData = (void*) file;
     return ret;
 }
 
-TreeMapNode nodeForDir(const Directory *dir, int &total, const QStringList &excludeList, const QString &removePrefix)
+TreeMapNode nodeForDir(
+        const Directory *dir, const QStringList &excludeList,
+        const QString &removePrefix, const FileEndingStats::DirStats &endingStats,
+        const QHash<QString, QColor> &palette)
 {
     TreeMapNode ret{};
     ret.label = dir->name();
@@ -32,20 +59,24 @@ TreeMapNode nodeForDir(const Directory *dir, int &total, const QStringList &excl
     if (!removePrefix.isEmpty() && ret.groupLabel.startsWith(removePrefix))
         ret.groupLabel = ret.groupLabel.mid(removePrefix.size());
 
-    ++total;
+    float r = 0.0f, g = 0.0f, b = 0.0f;
 
     for (const CodeItem *child : dir->children()) {
         if (!excludeList.contains(child->path())) {
             if (child->type() == CodeItem::Type_File) {
-                ret.children << nodeForFile((File*) child);
+                ret.children << nodeForFile((File*) child, palette);
                 ret.size += child->loc();
-                ++total;
             } else {
-                ret.children << nodeForDir((Directory*) child, total, excludeList, removePrefix);
+                ret.children << nodeForDir((Directory*) child, excludeList, removePrefix, endingStats, palette);
                 ret.size += ret.children.last().size;
             }
+
+            r += ret.children.last().color.red() * ret.children.last().size;
+            g += ret.children.last().color.green() * ret.children.last().size;
+            b += ret.children.last().color.blue() * ret.children.last().size;
         }
     }
+    ret.color = QColor(r / ret.size, g / ret.size, b / ret.size);
 
     return ret;
 }
@@ -148,6 +179,7 @@ void MainWindow::setupWidgets()
     //
     m_selectedInfo = new CodeItemInfoWidget(verticalLayoutWidget);
     m_selectedInfo->setTitle("Selected Item");
+    m_selectedInfo->setExcludeList(m_excludeList);
     verticalLayout->addWidget(m_selectedInfo);
 
     //
@@ -155,6 +187,7 @@ void MainWindow::setupWidgets()
     //
     m_hoveredInfo = new CodeItemInfoWidget(verticalLayoutWidget);
     m_hoveredInfo->setTitle("Hovered Item");
+    m_hoveredInfo->setExcludeList(m_excludeList);
     verticalLayout->addWidget(m_hoveredInfo);
 
     verticalLayout->addStretch();
@@ -242,38 +275,28 @@ void MainWindow::setCodeDetails(QStringList paths, QStringList excluded, QString
     });
 }
 
-static QRandomGenerator randGen;
-
-static void assignColors(TreeMapNode &node, int &curr, int total)
-{
-    node.hue = 360.0f * (float) curr++ / (float) total;
-    node.value = 80.0f;
-    for (TreeMapNode &child : node.children)
-        assignColors(child, curr, total);
-}
-
 void MainWindow::maybeUpdateTreeMapWidget()
 {
-    if (m_model->state() != CodeModel::State_Done) {
+    if (m_model->state() != CodeModel::State_Done)
         return;
-    }
 
     // if there is only one root node, we can remove its prefix from all
     // groupLabels along the way
     const QVector<const Directory*> rootDirs =  m_model->rootDirs();
     const QString removePrefix = (rootDirs.size() == 1) ? rootDirs.first()->fullName() : QString();
 
+    // collect File Ending Stats for each Directory and assign file ending colors
+    const FileEndingStats::DirStats endingStats = FileEndingStats::getDirStats(rootDirs, m_excludeList);
+    const QHash<QString, QColor> palette = getColorPalette(endingStats.total);
+
     // build root TreeMapNode
-    int currItem = 0, numItems = 0;
-    TreeMapNode rootNode{"root", "root", 0.0f, 100.0f, 0.0f, {}, nullptr};
+    TreeMapNode rootNode{"root", "root", QColor(), 0.0f, {}, nullptr};
     for (const Directory *dir : rootDirs) {
         if (!m_excludeList.contains(dir->path())) {
-            rootNode.children << nodeForDir(dir, numItems, m_excludeList, removePrefix);
+            rootNode.children << nodeForDir(dir, m_excludeList, removePrefix, endingStats, palette);
             rootNode.size += rootNode.children.last().size;
         }
     }
-
-    assignColors(rootNode, currItem, numItems);
 
     m_treeMap->setRootNode(rootNode);
 }
@@ -330,5 +353,7 @@ void MainWindow::excludePath(const QString &path)
         PersistentData::setExcludePaths(m_model->excludePaths());
     });
     m_excludeList << path;
+    m_selectedInfo->setExcludeList(m_excludeList);
+    m_hoveredInfo->setExcludeList(m_excludeList);
     maybeUpdateTreeMapWidget();
 }

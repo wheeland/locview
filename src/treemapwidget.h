@@ -10,8 +10,7 @@ struct TreeMapNode
 {
     QString label;
     QString groupLabel;
-    float hue = 0.0f;          // 0.0 - 360.0
-    float value = 0.0f;        // 0.0 - 100.0
+    QColor color;
     float size = 0.0f;
     QVector<TreeMapNode> children;
     void *userData = nullptr;

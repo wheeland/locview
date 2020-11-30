@@ -17,6 +17,8 @@ public:
     void setCodeItem(CodeItem *item);
     CodeItem *codeItem() const { return m_codeItem; }
 
+    void setExcludeList(const QStringList &excludes) { m_excludes = excludes; }
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
 
@@ -27,6 +29,8 @@ private:
     QLabel *fullPath;
     QLabel *loc;
     QLabel *label;
+
+    QStringList m_excludes;
 
     CodeItem *m_codeItem = nullptr;
 };

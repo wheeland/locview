@@ -3,7 +3,6 @@
 #include <memory>
 #include <algorithm>
 
-#include "hsluv-c/src/hsluv.h"
 #include "squarify.h"
 
 #include <QtMath>
@@ -58,13 +57,6 @@ static QRectF scaled(const QRectF &rect, float scale)
     return QRectF(rect.left() * scale, rect.top() * scale, rect.width() * scale, rect.height() * scale);
 }
 
-static QColor hv2qcolor(float hue, float value)
-{
-    double r, g, b;
-    hsluv2rgb(hue, 100.0, value, &r, &g, &b);
-    return QColor(255 * r, 255 * g, 255 * b);
-}
-
 static QRectF RectToQRect(const Rect &r) { return QRectF(r.x, r.y, r.width, r.height); }
 static Rect QRectToRect(const QRectF &r) { return Rect(r.left(), r.top(), r.width(), r.height()); }
 
@@ -98,7 +90,7 @@ void TreeMapWidget::rebuildNodeTree(Node &dstNode, const TreeMapNode &srcNode, i
     dstNode.groupLabel = srcNode.groupLabel;
     dstNode.groupLabelBounds = fontMetrics().boundingRect(dstNode.groupLabel);
     dstNode.groupLabelBounds.translate(-dstNode.groupLabelBounds.topLeft());
-    dstNode.color = hv2qcolor(srcNode.hue, srcNode.value);
+    dstNode.color = srcNode.color;
     dstNode.size = srcNode.size;
     dstNode.userData = srcNode.userData;
 

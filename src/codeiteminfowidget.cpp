@@ -1,5 +1,6 @@
 #include "codeiteminfowidget.h"
 #include "util.h"
+#include "codeutil.h"
 
 #include <QSizePolicy>
 
@@ -79,10 +80,21 @@ void CodeItemInfoWidget::update()
         Directory *dir = (Directory*) m_codeItem;
         label->setText(dir->name() + " (Directory)");
         fullPath->setText(dir->fullName());
-        loc->setText(QString("%1 loc (%3 dirs, %4 files)")
+
+        QString text = QString("%1 loc (%2 dirs, %3 files)")
                      .arg(formatNumDecimals(dir->loc()))
-                     .arg(dirs)
-                     .arg(files));
+                     .arg(formatNumDecimals(dirs))
+                     .arg(formatNumDecimals(files));
+
+        const FileEndingStats::DirStats dirStats = FileEndingStats::getDirStats({dir}, m_excludes);
+        for (const FileEndingStats::Entry &entry : dirStats.total) {
+            text += QString::asprintf("\n*.%1 (%2 loc, %3 files)")
+                    .arg(entry.ending)
+                    .arg(formatNumDecimals(entry.loc))
+                    .arg(formatNumDecimals(entry.fileCount));
+        }
+
+        loc->setText(text);
     }
     else if (m_codeItem->type() == CodeItem::Type_File) {
         File *file = (File*) m_codeItem;
