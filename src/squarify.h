@@ -65,6 +65,9 @@ private:
     };
     std::vector<Element> m_elements;
 
+    // to avoid unnecessary allocations/deallocations during operation
+    mutable std::vector<Rect> m_rectBuf;
+
     Rect m_rect;
 
     static float aspectRatio(const Rect &rect)
@@ -94,16 +97,16 @@ private:
      * If the given rectangle is horizontal, layout the given sizes vertically.
      * If the given rectangle is vertical, layout the given sizes horizontally.
      */
-    std::vector<Rect> layout(Span span, const Rect &rect) const
+    void layout(std::vector<Rect> &dst, Span span, const Rect &rect) const
     {
-        std::vector<Rect> rects;
+        dst.clear();
         const float area = sum(span);
 
         if (rect.width < rect.height) {
             float height = area / rect.width;
             float x = rect.x;
             for (size_t i = span.begin; i < span.end; ++i) {
-                rects.push_back(Rect{x, rect.y, m_elements[i].size / height, height});
+                dst.push_back(Rect{x, rect.y, m_elements[i].size / height, height});
                 x += m_elements[i].size / height;
             }
         }
@@ -111,12 +114,10 @@ private:
             float width = area / rect.height;
             float y = rect.y;
             for (size_t i = span.begin; i < span.end; ++i) {
-                rects.push_back(Rect{rect.x, y, width, m_elements[i].size / width});
+                dst.push_back(Rect{rect.x, y, width, m_elements[i].size / width});
                 y += m_elements[i].size / width;
             }
         }
-
-        return rects;
     }
 
     /** Cut off the amount of size from the longest edge of the rect */
@@ -134,13 +135,13 @@ private:
         }
     }
 
-    float worst_ratio(Span span, const Rect &rect) const
+    float worstRatio(std::vector<Rect> &dst, Span span, const Rect &rect) const
     {
         assert(span.len() > 0);
-        const std::vector<Rect> rects = layout(span, rect);
-        float worst = aspectRatio(rects[0]);
-        for (size_t i = 1; i < rects.size(); ++i)
-            worst = std::max(worst, aspectRatio(rects[1]));
+        layout(dst, span, rect);
+        float worst = aspectRatio(dst[0]);
+        for (size_t i = 1; i < dst.size(); ++i)
+            worst = std::max(worst, aspectRatio(dst[1]));
         return worst;
     }
 
@@ -152,36 +153,31 @@ private:
         ret.bounds = rect;
 
         size_t split = s.begin + 1;
-        while ((split < s.end)
-               && worst_ratio(Span{s.begin, split}, rect) >= worst_ratio(Span{s.begin, split + 1}, rect))
-            ++split;
+        float ratio = worstRatio(m_rectBuf, Span{s.begin, split}, rect);
+        while (split < s.end) {
+            const float newRatio = worstRatio(m_rectBuf, Span{s.begin, split + 1}, rect);
+            if (ratio >= newRatio) {
+                ratio = newRatio;
+                ++split;
+            }
+            else
+                break;
+        }
 
-        Span current = Span{s.begin, split};
-        Span remaining = Span{split, s.end};
-        Rect left = leftover(current, rect);
+        const Span current = Span{s.begin, split};
+        const Span remaining = Span{split, s.end};
+        const Rect left = leftover(current, rect);
 
-        const std::vector<Rect> rects = layout(current, rect);
-        assert(rects.size() == current.len());
-        for (size_t i = 0; i < rects.size(); ++i) {
-            ret.elements.push_back({m_elements[current.begin + i].originalIndex, rects[i]});
+        layout(m_rectBuf, current, rect);
+        assert(m_rectBuf.size() == current.len());
+        ret.elements.reserve(m_rectBuf.size());
+        for (size_t i = 0; i < m_rectBuf.size(); ++i) {
+            ret.elements.push_back({m_elements[current.begin + i].originalIndex, m_rectBuf[i]});
         }
 
         if (remaining.len() > 0) {
             ret.next.reset(new TreeMapNode());
             *ret.next = squarify(remaining, left);
-        }
-
-        return ret;
-    }
-
-    static std::vector<float> normalize(const std::vector<float> &sizes, const Rect &rect)
-    {
-        const float area = rect.width * rect.height;
-        const float sum = std::accumulate(sizes.begin(), sizes.end(), 0.0f);
-
-        std::vector<float> ret(sizes);
-        for (float &size : ret) {
-            size *= area / sum;
         }
 
         return ret;
@@ -216,6 +212,7 @@ public:
 
     TreeMapNode computeWithHierarchy()
     {
+        m_rectBuf.reserve(m_elements.size());
         return squarify(Span{0, m_elements.size()}, m_rect);
     }
 
