@@ -112,7 +112,7 @@ class Buffer
 public:
     Buffer(uint sz = 1 << 24) : m_reserved(sz), m_bytes(new quint8[sz]) {}
     void clear() { m_size = 0; }
-    const void *data() const { return (const void*) m_bytes.get(); }
+    const void *data() const { return (const void*) m_bytes.data(); }
     int size() const { return m_size; }
 
     void reserve(uint sz) {
@@ -140,7 +140,7 @@ private:
             newSize *= 2;
 
         quint8 *newData = new quint8[newSize];
-        memcpy(newData, m_bytes.get(), m_size);
+        memcpy(newData, m_bytes.data(), m_size);
         m_bytes.reset(newData);
         m_reserved = newSize;
     }

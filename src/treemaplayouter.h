@@ -4,6 +4,8 @@
 #include <QString>
 #include <QColor>
 #include <QRectF>
+#include <QVector>
+#include <functional>
 
 struct TreeMapNode
 {
