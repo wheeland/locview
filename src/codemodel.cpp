@@ -60,6 +60,14 @@ Directory::Directory(const QString &name, const QString &path, Directory *parent
 
 Directory::~Directory()
 {
+    qDeleteAll(m_children);
+}
+
+void Directory::updateLoc()
+{
+    m_loc = std::accumulate(m_children.begin(), m_children.end(), 0, [](int n, CodeItem *item) {
+        return n + item->loc();
+    });
 }
 
 void Directory::traverse(const ConstFileVisitor &visitor) const
@@ -92,6 +100,24 @@ void Directory::traverse(const DirectoryVisitor &visitor, TraversalType traversa
         child->traverse(visitor, traversalType);
     if (traversalType == ChildrenFirst)
         visitor(this);
+}
+
+void Directory::purgeExcludedItems(const QStringList &exclusionList)
+{
+    for (auto it = m_children.begin(); it != m_children.end(); /*empty*/) {
+        QFileInfo fileInfo((*it)->path());
+        if (exclusionList.contains(fileInfo.absoluteFilePath())) {
+            delete *it;
+            it = m_children.erase(it);
+        }
+        else {
+            if ((*it)->type() == Type_Directory) {
+                ((Directory*) *it)->purgeExcludedItems(exclusionList);
+            }
+            ++it;
+        }
+    }
+    updateLoc();
 }
 
 QString File::path() const
@@ -192,6 +218,9 @@ void CodeModel::setExcludePaths(const QStringList &excludePaths)
     for (QString &abs : m_excludeAbsolutePaths) {
         abs = QFileInfo(abs).absoluteFilePath();
     }
+
+    for (Directory *rootDir : m_rootDirs)
+        rootDir->purgeExcludedItems(m_excludeAbsolutePaths);
 }
 
 void CodeModel::addExcludePath(const QString &path)
@@ -320,9 +349,7 @@ void CodeModel::recompute()
     // Accumulate file locs for parent dirs
     for (Directory *rootDir : m_rootDirs) {
         rootDir->traverse([&](Directory *dir) {
-            dir->m_loc = std::accumulate(dir->m_children.begin(), dir->m_children.end(), 0, [](int n, CodeItem *item) {
-                return n + item->loc();
-            });
+            dir->updateLoc();
         }, CodeItem::ChildrenFirst);
     }
 

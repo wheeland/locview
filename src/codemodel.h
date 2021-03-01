@@ -62,6 +62,9 @@ private:
     Directory(const QString &name, const QString &path, Directory *parent);
     ~Directory();
 
+    void updateLoc();
+    void purgeExcludedItems(const QStringList &exclusionList);
+
     QString m_name;
     QString m_fullName;
     QString m_path;
@@ -140,6 +143,9 @@ public:
     void removeExcludePath(const QString &path);
     QStringList excludePaths() const { return m_excludePaths; }
 
+    /**
+     * Re-computes the whole model by iterating and parsing all dirs/files
+     */
     void update();
 
     QVector<const Directory*> rootDirs() const;
