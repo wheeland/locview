@@ -132,7 +132,7 @@ CodeModelDialog::CodeModelDialog(QWidget *parent)
 
     ui->endingsList->setSelectionMode(QAbstractItemView::SingleSelection);
     ui->endingsList->setMovement(QListView::Free);
-    ui->endingsList->setDragDropMode(QAbstractItemView::InternalMove);
+    ui->endingsList->setDragDropMode(QAbstractItemView::NoDragDrop);
     ui->endingsList->setModel(m_endingsModel);
 }
 
