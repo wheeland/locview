@@ -40,17 +40,22 @@ static QString dataDirectory()
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
 }
 
+static QSettings &settings()
+{
+    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
+    return settings;
+}
+
 static QString cacheFilePath()
 {
     static const QString dir = dataDirectory();
     QDir().mkpath(dir);
 
-    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
 
-    QVariant path = settings.value(KEY_CACHE_PATH);
-    if (!path.canConvert<QString>() || !QFile::exists(settings.value(KEY_CACHE_PATH).toString())) {
+    QVariant path = settings().value(KEY_CACHE_PATH);
+    if (!path.canConvert<QString>() || !QFile::exists(settings().value(KEY_CACHE_PATH).toString())) {
         path = dir + QDir::separator() + "cache.bin";
-        settings.setValue(KEY_CACHE_PATH, path);
+        settings().setValue(KEY_CACHE_PATH, path);
     }
     return path.toString();
 }
@@ -81,45 +86,38 @@ void PersistentData::setCacheData(const QByteArray &data)
 
 QStringList PersistentData::getIncludePaths()
 {
-    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
-    return settings.value(KEY_INCLUDES).toStringList();
+    return settings().value(KEY_INCLUDES).toStringList();
 }
 
 void PersistentData::setIncludePaths(const QStringList &strings)
 {
-    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
-    settings.setValue(KEY_INCLUDES, strings);
-    settings.sync();
+    settings().setValue(KEY_INCLUDES, strings);
+    settings().sync();
 }
 
 QStringList PersistentData::getExcludePaths()
 {
-    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
-    return settings.value(KEY_EXCLUDES).toStringList();
+    return settings().value(KEY_EXCLUDES).toStringList();
 }
 
 void PersistentData::setExcludePaths(const QStringList &strings)
 {
-    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
-    settings.setValue(KEY_EXCLUDES, strings);
-    settings.sync();
+    settings().setValue(KEY_EXCLUDES, strings);
+    settings().sync();
 }
 
 QStringList PersistentData::getFileEndings()
 {
-    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
-    return settings.value(KEY_ENDINGS).toStringList();
+    return settings().value(KEY_ENDINGS).toStringList();
 }
 
 void PersistentData::setFileEndings(const QStringList &strings)
 {
-    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
-    settings.setValue(KEY_ENDINGS, strings);
-    settings.sync();
+    settings().setValue(KEY_ENDINGS, strings);
+    settings().sync();
 }
 
 int PersistentData::getCodeModelThreadCount()
 {
-    static QSettings settings(dataDirectory() + QDir::separator() + "settings.ini", QSettings::IniFormat);
-    return settings.value(KEY_THREADCOUNT, QVariant(2 * QThread::idealThreadCount())).toInt();
+    return settings().value(KEY_THREADCOUNT, QVariant(2 * QThread::idealThreadCount())).toInt();
 }
