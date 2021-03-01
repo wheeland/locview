@@ -57,6 +57,7 @@ void CodeItemInfoWidget::setCodeItem(CodeItem *item)
 
 void CodeItemInfoWidget::resizeEvent(QResizeEvent *event)
 {
+    Q_UNUSED(event)
     label->setMinimumWidth(width() - 10);
     label->setMaximumWidth(width() - 10);
     loc->setMinimumWidth(width() - 10);
