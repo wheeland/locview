@@ -304,13 +304,13 @@ void TreeMapWidget::paintGL()
 
 void TreeMapWidget::wheelEvent(QWheelEvent *event)
 {
-    const float relx = (float) event->x() / (float) width();
-    const float rely = (float) event->y() / (float) height();
+    const float relx = (float) event->position().x() / (float) width();
+    const float rely = (float) event->position().y() / (float) height();
 
     const float cx = m_viewport.left() + m_viewport.width() * relx;
     const float cy = m_viewport.top() + m_viewport.height() * rely;
 
-    const float delta = qPow(0.5f, event->delta() / 1000.f);
+    const float delta = qPow(0.5f, event->angleDelta().y() / 1000.f);
     const float nw = m_viewport.width() * delta;
     const float nh = m_viewport.height() * delta;
 

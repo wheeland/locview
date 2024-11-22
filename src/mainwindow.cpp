@@ -23,7 +23,7 @@ static QHash<QString, QColor> getColorPalette(const FileEndingStats::Stats &endi
     // build hue list
     QVector<float> hues{220.f, 360.f, 60.f, 120.f, 30.f, 180.f, 310.f, 275.f, 80.f};
     while (hues.size() < endings.size())
-        hues << 360.f * ((float) qrand() / (float)RAND_MAX);
+        hues << 360.f * ((float) rand() / (float)RAND_MAX);
     while (hues.size() > endings.size())
         hues.removeLast();
 
